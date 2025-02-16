@@ -6,6 +6,7 @@ from typing import Optional
 import re
 import time
 import sys
+import os
 import argparse
 import bisect
 import pysam
@@ -13,12 +14,22 @@ import pysam
 APP_NAME = "TinkerHap"
 APP_DESC = "Read-Based Phasing Algorithm with Integrated Multi-Method Support for Enhanced Accuracy"
 APP_VERSION = "1.0"
-APP_DATE = "2024/12/30"
+APP_DATE = "2025/02/13"
 APP_URL = "https://github.com/DZeevi-Lab/TinkerHap"
 
 GRAVITY_SNP = 2
 GRAVITY_INDEL = 1
 OVERWRITE_OUTPUTS = True
+
+
+def invert_phasing(phase: int) -> int:
+    """Swaps the phase of an allele (1 <-> 2)."""
+    return 1 if phase == 2 else 2
+
+
+def phasing_by_linkage(phase: int, linkage: int) -> int:
+    """Return phase or invert it based on linkage score."""
+    return phase if linkage > 0 else invert_phasing(phase)
 
 
 def fill_del(allele: str, ref: str) -> str:
@@ -180,25 +191,52 @@ class BAMPhaser:
         else:
             read.p2 += gravity
 
-    def link_reads(self, read1: Read, read2: Read, gravity: int, read1idx: int) -> None:
-        """Links two reads by updating their haplotype phase."""
-        phasing_tag = self.calculate_read_phasing(read1)
+    def link_reads(self, read1: Read, read2: Read, linkage: int, read1idx: int) -> None:
+        """Links two reads by updating their haplotype phase scores."""
 
-        if phasing_tag == 0:
-            phasing_tag = self.calculate_read_phasing(read2)
+        gravity = abs(linkage)
 
-        if phasing_tag == 0:
-            if self.phase_count < 2:
-                htz_sites_positions = list(read1.alleles)
-                if (self.haplotype_start > 0) and (htz_sites_positions[0] > self.haplotype_end):
-                    self.new_haplotype(read1idx)
+        phasing1 = self.calculate_read_phasing(read1)
+        phasing2 = self.calculate_read_phasing(read2)
 
-                self.phase_count += 1
-                phasing_tag = self.phase_count
+        if (phasing1 == 0) and (phasing2 == 0):
+            htz_sites_positions = list(read1.alleles)
+            if (self.haplotype_start > 0) and (htz_sites_positions[0] > self.haplotype_end):
+                self.new_haplotype(read1idx)
 
-        if phasing_tag != 0:
-            self.increase_phase_score(read1, phasing_tag, gravity)
-            self.increase_phase_score(read2, phasing_tag, gravity)
+            phasing1 = 1
+            phasing2 = phasing_by_linkage(phasing1, linkage)
+        elif (phasing1 == 0):
+            phasing1 = phasing_by_linkage(phasing2, linkage)
+            phasing2 = phasing_by_linkage(phasing1, linkage)
+        elif (phasing2 == 0):
+            phasing2 = phasing_by_linkage(phasing1, linkage)
+            phasing1 = phasing_by_linkage(phasing2, linkage)
+        else:
+            if (linkage > 0):
+                if (phasing1 != phasing2):
+                    if (phasing1 == 1) and (read1.p1 < read2.p2):
+                        phasing1 = 2
+                    elif (phasing1 == 2) and (read1.p2 < read2.p1):
+                        phasing1 = 1
+                phasing2 = phasing1
+            else:
+                if phasing1 == phasing2:
+                    if (phasing1 == 1) and (read1.p1 < read2.p1):
+                        phasing1 = 2
+                        phasing2 = 1
+                    elif (phasing1 == 2) and (read1.p2 < read2.p2):
+                        phasing1 = 2
+                        phasing2 = 1
+                    else:
+                        phasing2 = invert_phasing(phasing1)
+
+                p2 = invert_phasing(phasing1)
+                phasing1 = invert_phasing(phasing2)
+                phasing2 = p2
+
+        self.increase_phase_score(read1, phasing1, gravity)
+        self.increase_phase_score(read2, phasing2, gravity)
 
     def get_allele(self, sequence: str, positions: list, idx: int) -> str:
         """Extracts the allele at a specific position in a read."""
@@ -295,7 +333,7 @@ class BAMPhaser:
                 continue
 
             # Check if site is HTZ
-            if data.alleles[0] != data.alleles[1]:
+            if (data.alleles[0] != None) and (data.alleles[1] != None) and (data.alleles[0] != data.alleles[1]):
                 alleles = data.alleles
                 l1 = len(alleles[0])
                 if l1 > 1:
@@ -307,26 +345,9 @@ class BAMPhaser:
         return records_count
 
     def vcf_sample_rephase(self, sample: pysam.VariantRecordSample, phase: tuple) -> None:
-        """Adjusts sample phasing in the VCF, flipping allele data if needed."""
-        indices_before = sample.allele_indices
+        """Adjusts sample phasing in the VCF"""
         sample.alleles = phase
-        indices = sample.allele_indices
         sample.phased = True
-
-        if indices_before != indices:
-            for item in sample.items():
-                if (not item[0] in ['AF', 'DP']) or (not isinstance(item[1], tuple)):
-                    continue
-
-                value = list(item[1])
-                if len(value) == 2:
-                    value = [value[1], value[0]]
-                    sample[item[0]] = tuple(value)
-                elif len(value) > 2:
-                    tmp = value[indices[1]]
-                    value[indices[1]] = value[indices[0]]
-                    value[indices[0]] = tmp
-                    sample[item[0]] = tuple(value)
 
     def vcf_count_alleles(self, sample: pysam.VariantRecordSample, reads: list,
                           variant: pysam.VariantRecord, reads_start: int,
@@ -428,6 +449,31 @@ class BAMPhaser:
 
         return reads_start
 
+    def variant_get_sample(self, variant: pysam.VariantRecord, sample_id) -> pysam.VariantRecordSample:
+        """Retrieves a sample from a VCF variant, using a sample ID if provided."""
+        if sample_id == "":
+            return variant.samples[0]
+        else:
+            return variant.samples.get(sample_id)
+
+    def vcf_variant_revert(self, pending_variant: pysam.VariantRecord, pending_sample_data: list, sample_id: str) -> None:
+        """Restores the original sample phasing in a VCF variant from stored data."""
+        pending_sample = self.variant_get_sample(pending_variant, sample_id)
+        pending_sample.alleles = pending_sample_data[0]
+        pending_sample.phased = pending_sample_data[1]
+        ps = pending_sample_data[2]
+        if (ps is None):
+            pending_sample['PS'] = None
+        else:
+            pending_sample['PS'] = ps
+
+    def vcf_save_pending(self, pending_variant: pysam.VariantRecord, pending_undecided: list) -> None:
+        """Writes the pending variant and undecided variants to the output VCF."""
+        self.vcf_writer.write(pending_variant)
+        for variant in pending_undecided:
+            self.vcf_writer.write(variant)
+        pending_undecided.clear()
+
     def vcf_save_reads(self, reads: list, sample_id: str) -> None:
         """Saves phased reads and variants back to the output VCF."""
         if not self.vcf_writer:
@@ -436,23 +482,60 @@ class BAMPhaser:
         self.prev_phasing = (0, 1)
         self.log('Saving to VCF', True)
 
+        current_haplotype = None
+        pending_variant = None
+        pending_undecided = []
         reads_start = 0
+        last_pss = 0
+        last_pss_haplotype = 0
         for variant in self.vcf_variants:
-            if sample_id == "":
-                sample = variant.samples[0]
-            else:
-                sample = variant.samples.get(sample_id)
+            sample = self.variant_get_sample(variant, sample_id)
 
-            if sample is None:
+            if (sample is None) or (sample.alleles[0] == None) or (sample.alleles[1] == None):
+                if (pending_variant is None):
+                    self.vcf_writer.write(variant)
+                else:
+                    pending_undecided.append(variant)
                 continue
 
+            org_sample_data = [sample.alleles, sample.phased, sample['PS'] if 'PS' in sample else None]
             if sample.alleles[0] == sample.alleles[1]:
-                sample.phased = False
-                sample['PS'] = None
+                sample.phased = True
+                sample['PS'] = current_haplotype
             else:
                 reads_start = self.vcf_phase_htz_sample(sample, reads, variant, reads_start)
 
-            self.vcf_writer.write(variant)
+            if ('PS' in sample) and (sample['PS'] is not None):
+                if ('PSS' in sample):
+                    if last_pss != sample['PSS']:
+                        last_pss = sample['PSS']
+                        last_pss_haplotype = sample['PS']
+
+                    org_sample_data[2] = last_pss_haplotype
+
+                if (current_haplotype == sample['PS']):
+                    if (pending_variant is not None):
+                        self.vcf_save_pending(pending_variant, pending_undecided)
+                        pending_undecided = []
+                        pending_variant = None
+                    self.vcf_writer.write(variant)
+                else:
+                    current_haplotype = sample['PS']
+                    if (pending_variant is not None):
+                        self.vcf_variant_revert(pending_variant, pending_sample_data, sample_id)
+                        self.vcf_save_pending(pending_variant, pending_undecided)
+                        pending_undecided = []
+                    pending_sample_data = org_sample_data
+                    pending_variant = variant
+            else:
+                if (pending_variant is None):
+                    self.vcf_writer.write(variant)
+                else:
+                    pending_undecided.append(variant)
+
+        if (pending_variant is not None):
+            self.vcf_variant_revert(pending_variant, pending_sample_data, sample_id)
+            self.vcf_save_pending(pending_variant, pending_undecided)
 
     def save_haplotypes(self) -> None:
         """Writes identified haplotype information to a BED file."""
@@ -517,19 +600,10 @@ class BAMPhaser:
                 if reads_compared > self.max_depth:
                     break
 
-                reads_linked = self.test_htz_reads(read, read2)
-                gravity = abs(reads_linked)
-                if reads_linked > 0:
-                    self.link_reads(read, read2, gravity, read1idx)
-                elif reads_linked < 0:
-                    phasing1 = self.calculate_read_phasing(read)
-                    phasing2 = self.calculate_read_phasing(read2)
-                    if (phasing1 == 0) and (phasing2 != 0):
-                        self.increase_phase_score(read, 1 if phasing2 == 2 else 2, gravity)
-                    elif (phasing1 != 0) and (phasing2 == 0):
-                        self.increase_phase_score(read2, 1 if phasing1 == 2 else 2, gravity)
-                    else:
-                        self.increase_phase_score(read2, 1 if phasing1 == 2 else 2, gravity)
+                linkage = self.test_htz_reads(read, read2)
+
+                if linkage != 0:
+                    self.link_reads(read, read2, linkage, read1idx)
 
         phasing = self.calculate_read_phasing(read)
         read.hp = phasing
@@ -708,6 +782,11 @@ class BAMPhaser:
     def scaffold_read_region(self, sample_id: str, contig: str, start: int, stop: int) -> dict:
         """Reads phased variants from a scaffold VCF for a specified region."""
         scaffold_sites = {}
+
+        if not os.path.exists(self.vcf_scaffold_path):
+            self.log("VCF file does not exist ("+self.vcf_scaffold_path+")")
+            sys.exit(1)
+
         vcf_scaffold = pysam.VariantFile(self.vcf_scaffold_path)
         for record in vcf_scaffold.fetch(contig, start, stop):
             if sample_id == "":
@@ -917,6 +996,10 @@ class BAMPhaser:
 
     def prepare_vcf_files(self):
         """Sets up VCF files for reading and writing phases."""
+        if not os.path.exists(self.vcf_in_path):
+            self.log("VCF file does not exist ("+self.vcf_in_path+")")
+            sys.exit(1)
+
         self.vcf_reader = pysam.VariantFile(self.vcf_in_path)
 
         vcf_out_header = self.vcf_reader.header
@@ -939,6 +1022,11 @@ class BAMPhaser:
 
     def prepare_bam_files(self):
         """Prepares BAM files for input and output operations."""
+
+        if not os.path.exists(self.bam_in_path):
+            self.log("BAM file does not exist ("+self.bam_in_path+")")
+            sys.exit(1)
+
         self.bam_in = pysam.AlignmentFile(self.bam_in_path, "rb", require_index=True)
         if self.bam_out_path != "":
             self.bam_out = pysam.AlignmentFile(self.bam_out_path, "wb", template=self.bam_in)
@@ -1031,7 +1119,7 @@ def main():
                         "and 1 for unphased reads)")
     parser.add_argument("-r", "--region",
                         dest="input_region",
-                        required="--bed-in" not in sys.argv,
+                        # required="--bed-in" not in sys.argv,
                         default="",
                         help="Region specified as specified as: RNAME[:STARTPOS[-ENDPOS]]")
     parser.add_argument("-ei", "--bed-in",
