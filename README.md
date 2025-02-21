@@ -1,7 +1,10 @@
 # TinkerHap - Read-Based Phasing Algorithm with Integrated Multi-Method Support for Enhanced Accuracy
 
 ## Overview
-TinkerHap is an accurate read-based phasing tool that integrates multiple methodologies to enhance phasing accuracy. It is designed to efficiently phase genomic data by linking sequencing reads across heterozygous sites, extending haplotype blocks, and incorporating pre-phased data when available. 
+TinkerHap is an accurate read-based phasing tool that integrates multiple methodologies to enhance phasing accuracy. It is designed to efficiently phase genomic data by linking sequencing reads across heterozygous sites, extending haplotype blocks, and incorporating pre-phased data when available.
+
+The full paper detailing the methodology and validation of TinkerHap is available at [bioRxiv](https://doi.org/10.1101/2025.02.16.638517)\
+DOI: https://doi.org/10.1101/2025.02.16.638517.
 
 ### Key Features:
 - **Hybrid Phasing Approach**: Combines read-based phasing with statistical or pedigree-based methods for increased accuracy.
@@ -10,20 +13,23 @@ TinkerHap is an accurate read-based phasing tool that integrates multiple method
 - **Customizable Outputs**: Generates phased VCF, annotated BAM, and haplotype BED files.
 
 ## Requirements
-- **Python**: >= 3.8.10
+- **Python**: >= 3.6.0
 - **Dependencies**:
-  - `pysam==0.22.1`
-
-Install dependencies using:
-```bash
-pip install pysam==0.22.1
-```
+  - `pysam>=0.17.0`
 
 ## Installation
-Clone the repository and navigate to the project directory:
+TinkerHap can be installed either by using [pip](https://pip.pypa.io) or directly by cloning the repo and running the python script.
+1. Using pip:
+```bash
+pip install pysam tinkerhap
+tinkerhap --help
+```
+
+2. Using git: Clone the repository and navigate to the project directory:
 ```bash
 git clone https://github.com/DZeevi-Lab/TinkerHap.git
 cd TinkerHap
+python ./tinkerhap.py --help
 ```
 
 ## Usage

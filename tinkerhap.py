@@ -1,6 +1,6 @@
 """TinkerHap - Read-Based Phasing Algorithm with Integrated Multi-Method Support for Enhanced Accuracy"""
 
-# Requirements: Python >=3.8.10, pysam==0.22.1
+# Requirements: Python >=3.6.0, pysam >=0.17.0
 
 from typing import Optional
 import re
@@ -13,7 +13,7 @@ import pysam
 
 APP_NAME = "TinkerHap"
 APP_DESC = "Read-Based Phasing Algorithm with Integrated Multi-Method Support for Enhanced Accuracy"
-APP_VERSION = "1.0"
+APP_VERSION = "1.0.0"
 APP_DATE = "2025/02/13"
 APP_URL = "https://github.com/DZeevi-Lab/TinkerHap"
 
@@ -1119,7 +1119,6 @@ def main():
                         "and 1 for unphased reads)")
     parser.add_argument("-r", "--region",
                         dest="input_region",
-                        # required="--bed-in" not in sys.argv,
                         default="",
                         help="Region specified as specified as: RNAME[:STARTPOS[-ENDPOS]]")
     parser.add_argument("-ei", "--bed-in",
