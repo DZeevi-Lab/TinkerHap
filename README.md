@@ -21,12 +21,13 @@ DOI: https://doi.org/10.1101/2025.02.16.638517.
 TinkerHap can be installed either by using [pip](https://pip.pypa.io) or directly by cloning the repo and running the python script.
 1. Using pip:
 ```bash
-pip install pysam tinkerhap
+pip install tinkerhap
 tinkerhap --help
 ```
 
-2. Using git: Clone the repository and navigate to the project directory:
+2. Using git: Install pysam, then clone the repository and navigate to the project directory:
 ```bash
+pip install pysam
 git clone https://github.com/DZeevi-Lab/TinkerHap.git
 cd TinkerHap
 python ./tinkerhap.py --help
