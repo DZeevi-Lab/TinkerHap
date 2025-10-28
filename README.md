@@ -72,7 +72,7 @@ TinkerHap demonstrates high accuracy in phasing both short-read and long-read se
 
 ## Citing
 
-Please cite this paper when using SAMtools for your publications:
+Please cite this paper when using TinkerHap for your publications:
 
 > Uri Hartmann, Eran Shaham, Dafna Nathan, Ilana Blech, Danny Zeevi, TinkerHap - A Novel Read-Based Phasing Algorithm with Integrated Multi-Method Support for Enhanced Accuracy, GigaScience, 2025;, giaf138, https://doi.org/10.1093/gigascience/giaf138
 
