@@ -70,5 +70,11 @@ TinkerHap demonstrates high accuracy in phasing both short-read and long-read se
 - **Long-Read Accuracy**: 97.5%.
 - **Extended Haplotype Blocks**: Median size of 79,449 base pairs with long-reads.
 
+## Citing
+
+Please cite this paper when using SAMtools for your publications:
+
+> Uri Hartmann, Eran Shaham, Dafna Nathan, Ilana Blech, Danny Zeevi, TinkerHap - A Novel Read-Based Phasing Algorithm with Integrated Multi-Method Support for Enhanced Accuracy, GigaScience, 2025;, giaf138, https://doi.org/10.1093/gigascience/giaf138
+
 ## License
 TinkerHap is distributed under the MIT License. See `LICENSE` for details.
